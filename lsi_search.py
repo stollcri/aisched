@@ -15,7 +15,13 @@ SearchResult = namedtuple('SearchResult', 'score index employee work_day work_sh
 
 
 class LsiSearch():
-    COLS_MAP = {'work_day': 0, 'work_shift': 1, 'work_type': 2, 'worked': 3, 'employee_id': 4}
+    HIST_DATA_COL_MAP = {
+        'work_day': 'work_day',
+        'work_shift': 'work_shift',
+        'work_type': 'work_type',
+        'worked': 'worked',
+        'employee_id': 'employee_id'
+    }
     # these need to be grouped by similarity, maybe higher values can cover lower values
     # (is it cheaper to schedule a more qualified employee than to pay overtime to the correct qualified?)
     WORK_MAP = {'CNA': 0, 'LPN': 1, 'ZZZ': 2}
@@ -23,53 +29,52 @@ class LsiSearch():
 
     WORK_COUNT_FACTOR = .01
 
-    def read_csv(self, filehandle):
+    def read_csv(self, hist_data_stream):
         """ Read a CSV file and return a list of lists
 
-        :filehandle:    CSV stream to read from
-        :returns:       a list (of CSV rows) of lists (of CSV columns),
-                        a list of employees
+        :hist_data_stream:  CSV stream to read from
+        :returns:           a list (of CSV rows) of lists (of CSV columns),
+                            a list of employees
         """
-        # csv_reader = csv.DictReader(filehandle, delimiter=',')
-        # for row in csv_reader:
-        #     print row["work_type"]
-        csv_reader = csv.reader(filehandle, delimiter=',')
-        csv_list = list(csv_reader)
         schedule_list = []
         employee_ids = []
         csv_index = {}
-        for i, line in enumerate(csv_list):
-            # skip the first (header) line
-            if i:
-                work_day = int(line[self.COLS_MAP['work_day']])
-                work_shift = int(line[self.COLS_MAP['work_shift']])
-                work_type = self.WORK_MAP[line[self.COLS_MAP['work_type']]]
-                worked = self.BOOL_MAP[line[self.COLS_MAP['worked']]]
-                employee_id = line[self.COLS_MAP['employee_id']]
+        for row in csv.DictReader(hist_data_stream, delimiter=','):
+            try:
+                work_day = int(row[self.HIST_DATA_COL_MAP['work_day']])
+            except:
+                work_day = 0
+            try:
+                work_shift = int(row[self.HIST_DATA_COL_MAP['work_shift']])
+            except:
+                work_shift = 0
+            work_type = self.WORK_MAP[row[self.HIST_DATA_COL_MAP['work_type']]]
+            worked = self.BOOL_MAP[row[self.HIST_DATA_COL_MAP['worked']]]
+            employee_id = row[self.HIST_DATA_COL_MAP['employee_id']]
 
-                csv_key = '{}-{}-{}-{}-{}'.format(work_day, work_shift, work_type, worked, employee_id)
-                if csv_key not in csv_index:
-                    csv_item_detail = {}
-                    csv_item_detail['id'] = len(schedule_list)
-                    csv_item_detail['count'] = 1
-                    csv_index[csv_key] = csv_item_detail
-                else:
-                    csv_item_detail = csv_index[csv_key]
-                    csv_item_detail['count'] += 1
-                    csv_index[csv_key] = csv_item_detail
+            csv_key = '{}-{}-{}-{}-{}'.format(work_day, work_shift, work_type, worked, employee_id)
+            if csv_key not in csv_index:
+                csv_item_detail = {}
+                csv_item_detail['id'] = len(schedule_list)
+                csv_item_detail['count'] = 1
+                csv_index[csv_key] = csv_item_detail
+            else:
+                csv_item_detail = csv_index[csv_key]
+                csv_item_detail['count'] += 1
+                csv_index[csv_key] = csv_item_detail
 
-                if csv_index[csv_key]['count'] == 1:
-                    employee_ids.append(employee_id)
-                    schedule_list.append([
-                        work_day,
-                        work_shift,
-                        work_type,
-                        worked,
-                        self.WORK_COUNT_FACTOR,
-                        0, 0, 0, 0
-                    ])
-                else:
-                    schedule_list[csv_index[csv_key]['id']][4] = csv_index[csv_key]['count'] * self.WORK_COUNT_FACTOR
+            if csv_index[csv_key]['count'] == 1:
+                employee_ids.append(employee_id)
+                schedule_list.append([
+                    work_day,
+                    work_shift,
+                    work_type,
+                    worked,
+                    self.WORK_COUNT_FACTOR,
+                    0, 0, 0, 0
+                ])
+            else:
+                schedule_list[csv_index[csv_key]['id']][4] = csv_index[csv_key]['count'] * self.WORK_COUNT_FACTOR
         return schedule_list, employee_ids
 
     def center_matrix(self, source_matrix):
@@ -275,19 +280,19 @@ class LsiSearch():
         # TODO: compare results against a simple cartesian distance of the search terms to each of the known results
         #
 
-    def find_in_csv(self, filehandle, search_schedule, result_count):
+    def find_in_csv(self, hist_data_stream, search_schedule, result_count):
         """ Take a csv file with historical data and a schedule search
             and calculate the employee most suited for the schedule
 
         TODO: cache the eigenspace and other data from intermediate steps
                 move cached data (or to be cached data) to class namespace
 
-        :filehandle:        the csv containing historical shift data
+        :hist_data_stream:  the csv containing historical shift data
         :search_schedule:   the schedule to find an ideal employee for
         :result_count:      the maximum number of results to return
         :returns:           the top n matches for the query
         """
-        csv_list, employee_ids = self.read_csv(filehandle)
+        csv_list, employee_ids = self.read_csv(hist_data_stream)
         csv_list_centered, csv_list_means = self.center_matrix(csv_list)
         eigen_space, eigen_values = self.create_eigenspace(csv_list_centered)
         k_limit = len(eigen_values)
@@ -296,19 +301,19 @@ class LsiSearch():
             search_schedule, result_count, csv_list, employee_ids, eigen_space, k_limit, weights)
         return results
 
-    def find_in_csv_and_print(self, filehandle, search_schedule, result_count):
+    def find_in_csv_and_print(self, hist_data_stream, search_schedule, result_count):
         """ Take a csv file with historical data and a schedule search,
             calculate the employee most suited for the schedule,
             and print the results
 
         TODO: switch everything from here back to use generators (with yield)
 
-        :filehandle:        the csv containing historical shift data
+        :hist_data_stream:  the csv containing historical shift data
         :search_schedule:   the schedule to find an ideal employee for
         :result_count:      the maximum number of results to return
         :returns:           none, prints the top n matches for the query
         """
-        results = self.find_in_csv(filehandle, search_schedule, result_count)
+        results = self.find_in_csv(hist_data_stream, search_schedule, result_count)
         for result in results:
             print result
 
