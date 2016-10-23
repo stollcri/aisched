@@ -10,6 +10,8 @@ import sys
 from operator import attrgetter
 from collections import namedtuple
 
+from work_types import WorkTypes
+
 Schedule = namedtuple('Schedule', 'work_day work_shift work_type worked employee_id')
 SearchResult = namedtuple('SearchResult', 'score index employee work_day work_shift work_type worked worked_count')
 
@@ -24,10 +26,17 @@ class LsiSearch():
     }
     # these need to be grouped by similarity, maybe higher values can cover lower values
     # (is it cheaper to schedule a more qualified employee than to pay overtime to the correct qualified?)
-    WORK_MAP = {'CNA': 0, 'LPN': 1, 'ZZZ': 2}
+    WORK_TYPE_MAP = WorkTypes().map
     BOOL_MAP = {'False': 0, 'True': 1}
 
     WORK_COUNT_FACTOR = .01
+
+    def __init__(self):
+        self.csv_list = []
+        self.employee_ids = []
+        self.eigen_space = []
+        self.k_limit = 0
+        self.weights = []
 
     def read_csv(self, hist_data_stream):
         """ Read a CSV file and return a list of lists
@@ -48,7 +57,7 @@ class LsiSearch():
                 work_shift = int(row[self.HIST_DATA_COL_MAP['work_shift']])
             except:
                 work_shift = 0
-            work_type = self.WORK_MAP[row[self.HIST_DATA_COL_MAP['work_type']]]
+            work_type = self.WORK_TYPE_MAP[row[self.HIST_DATA_COL_MAP['work_type']]]
             worked = self.BOOL_MAP[row[self.HIST_DATA_COL_MAP['worked']]]
             employee_id = row[self.HIST_DATA_COL_MAP['employee_id']]
 
@@ -285,20 +294,28 @@ class LsiSearch():
             and calculate the employee most suited for the schedule
 
         TODO: cache the eigenspace and other data from intermediate steps
-                move cached data (or to be cached data) to class namespace
 
         :hist_data_stream:  the csv containing historical shift data
         :search_schedule:   the schedule to find an ideal employee for
         :result_count:      the maximum number of results to return
         :returns:           the top n matches for the query
         """
-        csv_list, employee_ids = self.read_csv(hist_data_stream)
-        csv_list_centered, csv_list_means = self.center_matrix(csv_list)
-        eigen_space, eigen_values = self.create_eigenspace(csv_list_centered)
-        k_limit = len(eigen_values)
-        weights = self.generate_weights(k_limit, eigen_space, csv_list)
+        if not self.csv_list or not self.employee_ids:
+            self.csv_list, self.employee_ids = self.read_csv(hist_data_stream)
+        if self.k_limit == 0 or not self.weights:
+            csv_list_centered, csv_list_means = self.center_matrix(self.csv_list)
+            self.eigen_space, eigen_values = self.create_eigenspace(csv_list_centered)
+            self.k_limit = len(eigen_values)
+            self.weights = self.generate_weights(self.k_limit, self.eigen_space, self.csv_list)
         results = self.perform_search(
-            search_schedule, result_count, csv_list, employee_ids, eigen_space, k_limit, weights)
+            search_schedule,
+            result_count,
+            self.csv_list,
+            self.employee_ids,
+            self.eigen_space,
+            self.k_limit,
+            self.weights
+        )
         return results
 
     def find_in_csv_and_print(self, hist_data_stream, search_schedule, result_count):
