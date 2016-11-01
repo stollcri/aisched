@@ -16,18 +16,39 @@ OpenShift = namedtuple('OpenShift', 'work_day work_shift work_type')
 
 
 class Node():
-    ID_UNKNOWN = '__IDUNK__'
+    """ DAG (Directed Acyclical Graph) Node
+    """
+    ID_ANONYMOUS = '__IDANON__'
 
-    def __init__(self, node_id, capacity=0):
+    def __init__(self, node_id):
+        """ Initialize a node
+
+        :node_id:   the id for the new node
+                    if no id is given, the node becomes anonymous
+                    anonymous nodes cannot have edges added to them
+                    and thus are useless
+        """
         self.edges = {}
         if node_id:
             self.node_id = node_id
         else:
-            self.node_id = self.ID_UNKNOWN
-        self.capacity = capacity
+            self.node_id = self.ID_ANONYMOUS
+        # self.capacity = capacity
         # self.flow = 0
 
     def connect_to(self, node_id, edge_weight=1, add_weight=False):
+        """ Connect this node to another
+
+        Add the other node to this node's edges index
+
+        :node_id:       the node to connect to
+        :edge_weight:   the capacipty of the new edge
+        :add_weight:    add weight to any existing edges when true
+                        otherwise existing edges have their weight updated
+        """
+        if node_id == self.ID_ANONYMOUS:
+            print("WARNING: Node.connect_to -- not adding edge to anonymous node")
+            return
         if not add_weight:
             if node_id in self.edges:
                 print("INFO: Node.connect_to -- updating weight from %s to %s for edge %s to %s" %
@@ -40,6 +61,8 @@ class Node():
 
 
 class Graph():
+    """ DAG -- Directed Acyclical Grpah
+    """
     ID_SOURCE = '__IDSRC__'
     ID_SINK = '__IDSNK__'
 
@@ -49,24 +72,47 @@ class Graph():
         self.nodes[self.ID_SINK] = Node(self.ID_SINK)
 
     def add_node(self, node_id):
+        """ Add a node to the graph
+
+        :node_id:   the id for the new node
+        """
         if node_id not in self.nodes:
             self.nodes[node_id] = Node(node_id)
 
     def add_edge(self, source_node, sink_node, capacity, add_capacity=False):
+        """ Add an edge between two nodes
+
+        :source_node:   where the edge begins
+        :sink_node:     where the edge ends
+        :capacity:      the flow across the edge
+        :add_capacity:  if edge exists add to existing capacity
+                        otherwise existing capacity is updated
+        """
         if source_node not in self.nodes or sink_node not in self.nodes:
             print("ERROR: Graph.add_edge -- invalid source (%s) or sink (%s)" % (source_node, sink_node))
-            return False  # TODO: raise an error here instead?
+            return
         s = self.nodes[source_node]
         s.connect_to(sink_node, capacity, add_capacity)
-        return True  # TODO: not needed if raising errors
 
     def add_leading_edge(self, sink_node, capacity):
+        """ Add an edge from the graph source to this node
+
+        :sink_node:     where the edge ends
+        :capacity:      the flow across the edge
+        """
         self.add_edge(self.ID_SOURCE, sink_node, capacity)
 
     def add_trailing_edge(self, source_node, capacity):
+        """ Add and edge from this node to the graph sink
+
+        :source_node:   where the edge ends
+        :capacity:      the flow across the edge
+        """
         self.add_edge(source_node, self.ID_SINK, capacity)
 
     def dump(self):
+        """ Print the graph
+        """
         for node in self.nodes:
             print("%s: " % node, end="")
             edges = self.nodes[node].edges
@@ -77,6 +123,8 @@ class Graph():
 
 
 class MaxFlowMatch():
+    """ Match workers to shifts using a graph-based max-flow technique
+    """
     OPEN_SHIFT_COL_MAP = {
         'work_day': 'work_day',
         'work_shift': 'work_shift',
@@ -91,7 +139,7 @@ class MaxFlowMatch():
         """ Read a CSV file and return a list of lists
 
         :open_shift_stream: CSV stream to read from
-        :returns:           ???
+        :returns:           a list of OpenShift
         """
         shift_list = []
         for row in csv.DictReader(open_shift_stream, delimiter=','):
@@ -113,10 +161,17 @@ class MaxFlowMatch():
         return shift_list
 
     def initialize_graph(self):
+        """ Initialize the graph object
+        """
         if self.schedule_graph is None:
             self.schedule_graph = Graph()
 
     def add_to_graph(self, shift_key, shift_candidates):
+        """ Add node (and associated edges) to graph
+
+        :shift_key:         the shift node to add
+        :shift_candidates:  list of OpenShift candidates to add/update nodes for
+        """
         HOURS_SHIFT = 8
         HOURS_WEEK = 40
         self.schedule_graph.add_node(shift_key)
@@ -128,6 +183,12 @@ class MaxFlowMatch():
             self.schedule_graph.add_trailing_edge(candidate_key, HOURS_WEEK)
 
     def find_and_print(self, hist_data_stream, open_shift_stream):
+        """ Find the best candidates for a set of open shifts
+            Given historical data and desired shifts to fill
+
+        :hist_data_stream:  file stream containing the historical data
+        :open_shift_stream: file stream containing the open shift data
+        """
         lsi = LsiSearch()
         self.initialize_graph()
         shift_list = self.read_shift_csv(open_shift_stream)
