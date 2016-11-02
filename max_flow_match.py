@@ -139,35 +139,62 @@ class Graph():
         # list of capacities for the found nodes
         capacity_list = []
         capacity_list.append(capacity)
+        # used to get the search path
+        parent_list = []
+        parent_list.append(0)
         # list of already visited nodes
         visited = {}
 
         while len(node_list):
             current_node = node_list.pop()
             current_capacity = capacity_list.pop()
+            parent_list.pop()
             capacity = min(capacity, current_capacity)
 
-            # when the target node is found
-            if current_node == target_node:
-                print("> %s (%s)" % (current_node, current_capacity))
-                break
+            # # when the target node is found
+            # if current_node == target_node:
+            #     print("> %s (%s)" % (current_node, current_capacity))
+            #     break
 
             # we have not previously seen this node
             if current_node not in visited:
-                print("> %s (%s)" % (current_node, current_capacity))
+                # print("> %s (%s)" % (current_node, current_capacity))
                 visited[current_node] = 1
                 # get the outbound edges from the current node
                 edges = self.nodes[current_node].edges
-                for edge in edges:
+                for i, edge in enumerate(edges):
+                    if edge == target_node:
+                        # add final items to the search path
+                        parent_list.append(current_node)
+                        parent_list.append(edge)
+                        print(". %s (%s)" % (edge, current_capacity))
+                        print()
+                        # prepare to exit the outer while loop
+                        node_list = []
+                        # exit the inner for loop
+                        break
                     # check that the edge has capacity
                     if edges[edge] > 0:
+                        print(">%s> %s (%s)" % (i, edge, current_capacity))
                         # add to the list the while loop is pulling from
                         node_list.append(edge)
                         capacity_list.append(edges[edge])
+                        parent_list.append(current_node)
+
+        node_last = 0
+        search_path = []
+        for i in range((len(parent_list) - 1), 0, -1):
+            if parent_list[i] != node_last:
+                search_path.append(parent_list[i])
+            node_last = parent_list[i]
+        search_path.reverse()
+
+        for sp in search_path:
+            print("-> %s" % sp)
 
         print("  %s" % capacity)
         print()
-        return capacity
+        return capacity, search_path
 
     def edmonds_karp(self):
         """ Perform max-flow calculation using Ddmonds-Karp implementation
