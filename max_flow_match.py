@@ -16,7 +16,7 @@ OpenShift = namedtuple('OpenShift', 'work_day work_shift work_type')
 
 
 class Node():
-    """ DAG (Directed Acyclical Graph) Node
+    """ Directed Graph Node
     """
     ID_ANONYMOUS = '__IDANON__'
 
@@ -61,7 +61,7 @@ class Node():
 
 
 class Graph():
-    """ DAG -- Directed Acyclical Grpah
+    """ Directed Graph
     """
     ID_SOURCE = '__IDSRC__'
     ID_SINK = '__IDSNK__'
@@ -110,6 +110,70 @@ class Graph():
         """
         self.add_edge(source_node, self.ID_SINK, capacity)
 
+    def breadth_first_search(self, source_node, target_node):
+        """ Perform a breadth first search, obviously
+
+        :source_node:   starting point for the BFS
+        :target_node:   stopping point for the BFS
+        """
+        pass
+
+    def depth_first_search(self, source_node, target_node):
+        """ Perform a breadth first search, obviously
+
+        :source_node:   starting point for the BFS
+        :target_node:   stopping point for the BFS
+        """
+        if source_node not in self.nodes:
+            print("ERROR: Graph.depth_first_search -- invalid source (%s)" % source_node)
+            return
+        elif target_node not in self.nodes:
+            print("ERROR: Graph.depth_first_search -- invalid target (%s)" % target_node)
+            return
+
+        # starting max capacity (should be restricted as graph is traveresed)
+        capacity = sys.maxint
+        # list of found nodes (which we should attempt to visit latter)
+        node_list = []
+        node_list.append(source_node)
+        # list of capacities for the found nodes
+        capacity_list = []
+        capacity_list.append(capacity)
+        # list of already visited nodes
+        visited = {}
+
+        while len(node_list):
+            current_node = node_list.pop()
+            current_capacity = capacity_list.pop()
+            capacity = min(capacity, current_capacity)
+
+            # when the target node is found
+            if current_node == target_node:
+                print("> %s (%s)" % (current_node, current_capacity))
+                break
+
+            # we have not previously seen this node
+            if current_node not in visited:
+                print("> %s (%s)" % (current_node, current_capacity))
+                visited[current_node] = 1
+                # get the outbound edges from the current node
+                edges = self.nodes[current_node].edges
+                for edge in edges:
+                    # check that the edge has capacity
+                    if edges[edge] > 0:
+                        # add to the list the while loop is pulling from
+                        node_list.append(edge)
+                        capacity_list.append(edges[edge])
+
+        print("  %s" % capacity)
+        print()
+        return capacity
+
+    def edmonds_karp(self):
+        """ Perform max-flow calculation using Ddmonds-Karp implementation
+        """
+        pass
+
     def dump(self):
         """ Print the graph
         """
@@ -120,6 +184,8 @@ class Graph():
                 print("%s (%s), " % (edge, edges[edge]), end="")
             print()
         print()
+        self.depth_first_search(self.ID_SOURCE, self.ID_SINK)
+        self.depth_first_search(self.ID_SOURCE, 'B0023')
 
 
 class MaxFlowMatch():
