@@ -102,7 +102,7 @@ class Graph():
         :sink_node:     where the edge ends
         :capacity:      the flow across the edge
         """
-        self.add_edge(self.ID_SOURCE, sink_node, capacity)
+        self.add_edge(self.ID_SOURCE, sink_node, capacity, True)
 
     def add_trailing_edge(self, source_node, capacity):
         """ Add and edge from this node to the graph sink
@@ -189,6 +189,8 @@ class Graph():
             for sp in search_path:
                 print("%s ==> " % sp, end="")
             print(" (%s)" % capacity)
+        else:
+            capacity = 0
 
         return capacity, search_path
 
@@ -202,7 +204,7 @@ class Graph():
         while search_path_flow > 0:
             search_path_flow, search_path = self.depth_first_search(source_node, target_node)
 
-            if search_path_flow <= 0 or search_path_flow == sys.maxint:
+            if search_path_flow <= 0 or len(search_path) == 0 or search_path_flow == sys.maxint:
                 break
 
             for i, node in enumerate(search_path):
@@ -316,6 +318,10 @@ class MaxFlowMatch():
         shift_list_keys = []
         # schedule_size = len(shift_list)
         for shift in shift_list:
+            # TODO: pull out into a method?
+            shift_key = '{}-{}-{}'.format(shift.work_day, shift.work_shift, shift.work_type)
+            shift_list_keys.append(shift_key)
+
             search_schedule = Schedule(
                 work_day=shift.work_day,
                 work_shift=shift.work_shift,
@@ -323,9 +329,6 @@ class MaxFlowMatch():
                 worked=1,
                 employee_id=0
             )
-            # TODO: pull out into a method?
-            shift_key = '{}-{}-{}'.format(shift.work_day, shift.work_shift, shift.work_type)
-            shift_list_keys.append(shift_key)
             # TODO: go fix lsi, there are duplicate employee ids coming through
             shift_candidates = lsi.find_in_csv(hist_data_stream, search_schedule, len(shift_list))
             self.add_to_graph(shift_key, shift_candidates)
@@ -340,9 +343,15 @@ class MaxFlowMatch():
 
         for shift in shift_list_keys:
             flows = self.schedule_graph.nodes[shift].flows
+            found_employee = False
             for flow in flows:
                 if flows[flow] > 0:
                     print("shift: %s, employee: %s, hours: %s" % (shift, flow, flows[flow]))
+                    found_employee = True
+                    flows[flow] = 0
+                    break
+            if not found_employee:
+                print("shift: %s, employee: %s, hours: %s" % (shift, '--?--', flows[flow]))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Find the best matches for open shifts given historical data')
