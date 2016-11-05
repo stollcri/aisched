@@ -29,12 +29,12 @@ class Node():
                     and thus are useless
         """
         self.edges = {}
+        self.flows = {}
+        self.residuals = {}
         if node_id:
             self.node_id = node_id
         else:
             self.node_id = self.ID_ANONYMOUS
-        # self.capacity = capacity
-        # self.flow = 0
 
     def connect_to(self, node_id, edge_weight=1, add_weight=False):
         """ Connect this node to another
@@ -58,10 +58,12 @@ class Node():
             if node_id not in self.edges:
                 self.edges[node_id] = 0
             self.edges[node_id] += edge_weight
+        self.flows[node_id] = 0
+        self.residuals[node_id] = self.edges[node_id]
 
 
 class Graph():
-    """ Directed Graph
+    """ Directed (Bi-partie) Graph
     """
     ID_SOURCE = '__IDSRC__'
     ID_SINK = '__IDSNK__'
@@ -116,7 +118,7 @@ class Graph():
         :source_node:   starting point for the BFS
         :target_node:   stopping point for the BFS
         """
-        pass
+        return False
 
     def depth_first_search(self, source_node, target_node):
         """ Perform a breadth first search, obviously
@@ -141,65 +143,91 @@ class Graph():
         capacity_list.append(capacity)
         # used to get the search path
         parent_list = []
-        parent_list.append(0)
         # list of already visited nodes
         visited = {}
 
+        target_found = False
         while len(node_list):
+            # TODO: consider combining these 3 lists into one (list of named tuples)
             current_node = node_list.pop()
             current_capacity = capacity_list.pop()
-            parent_list.pop()
             capacity = min(capacity, current_capacity)
-
-            # # when the target node is found
-            # if current_node == target_node:
-            #     print("> %s (%s)" % (current_node, current_capacity))
-            #     break
 
             # we have not previously seen this node
             if current_node not in visited:
-                # print("> %s (%s)" % (current_node, current_capacity))
                 visited[current_node] = 1
                 # get the outbound edges from the current node
-                edges = self.nodes[current_node].edges
-                for i, edge in enumerate(edges):
+                # edges = self.nodes[current_node].edges
+                residuals = self.nodes[current_node].residuals
+                for i, edge in enumerate(residuals):
                     if edge == target_node:
                         # add final items to the search path
                         parent_list.append(current_node)
-                        parent_list.append(edge)
-                        print(". %s (%s)" % (edge, current_capacity))
-                        print()
+                        parent_list.append(target_node)
                         # prepare to exit the outer while loop
                         node_list = []
+                        # prepare to enter post processing step
+                        target_found = True
                         # exit the inner for loop
                         break
                     # check that the edge has capacity
-                    if edges[edge] > 0:
-                        print(">%s> %s (%s)" % (i, edge, current_capacity))
+                    if residuals[edge] > 0:
                         # add to the list the while loop is pulling from
                         node_list.append(edge)
-                        capacity_list.append(edges[edge])
+                        capacity_list.append(residuals[edge])
                         parent_list.append(current_node)
 
-        node_last = 0
         search_path = []
-        for i in range((len(parent_list) - 1), 0, -1):
-            if parent_list[i] != node_last:
-                search_path.append(parent_list[i])
-            node_last = parent_list[i]
-        search_path.reverse()
+        if target_found:
+            node_last = 0
+            for i in range((len(parent_list) - 1), -1, -1):
+                if parent_list[i] != node_last:
+                    search_path.append(parent_list[i])
+                node_last = parent_list[i]
+            search_path.reverse()
 
-        for sp in search_path:
-            print("-> %s" % sp)
+            for sp in search_path:
+                print("%s ==> " % sp, end="")
+            print(" (%s)" % capacity)
 
-        print("  %s" % capacity)
-        print()
         return capacity, search_path
 
-    def edmonds_karp(self):
-        """ Perform max-flow calculation using Ddmonds-Karp implementation
+    def edmonds_karp(self, source_node, target_node):
+        """ Perform max-flow for this graph using Ddmonds-Karp implementation
         """
-        pass
+        total_capacity = 0
+        flow_graph = None
+
+        search_path_flow = sys.maxint
+        while search_path_flow > 0:
+            search_path_flow, search_path = self.depth_first_search(source_node, target_node)
+
+            if search_path_flow <= 0 or search_path_flow == sys.maxint:
+                break
+
+            for i, node in enumerate(search_path):
+                if i == (len(search_path) - 1):
+                    break
+                current_node = self.nodes[node]
+                next_node = search_path[i + 1]
+
+                current_node.flows[next_node] += search_path_flow
+                current_node.residuals[next_node] = current_node.edges[next_node] - current_node.flows[next_node]
+
+                print("%s ~~%s-%s=%s~~> %s|" %
+                      (node,
+                       current_node.edges[next_node],
+                       current_node.flows[next_node],
+                       current_node.residuals[next_node],
+                       next_node), end="")
+            print()
+            print()
+        return total_capacity, flow_graph
+
+    def max_flow(self, source_node, target_node):
+        """ Perform max-flow for this graph
+        """
+        return self.edmonds_karp(source_node, target_node)
 
     def dump(self):
         """ Print the graph
@@ -207,12 +235,12 @@ class Graph():
         for node in self.nodes:
             print("%s: " % node, end="")
             edges = self.nodes[node].edges
+            flows = self.nodes[node].flows
+            residuals = self.nodes[node].residuals
             for edge in edges:
-                print("%s (%s), " % (edge, edges[edge]), end="")
+                print("%s (%s - %s = %s), " % (edge, edges[edge], flows[edge], residuals[edge]), end="")
             print()
         print()
-        self.depth_first_search(self.ID_SOURCE, self.ID_SINK)
-        self.depth_first_search(self.ID_SOURCE, 'B0023')
 
 
 class MaxFlowMatch():
@@ -285,9 +313,9 @@ class MaxFlowMatch():
         lsi = LsiSearch()
         self.initialize_graph()
         shift_list = self.read_shift_csv(open_shift_stream)
+        shift_list_keys = []
         # schedule_size = len(shift_list)
         for shift in shift_list:
-            print
             search_schedule = Schedule(
                 work_day=shift.work_day,
                 work_shift=shift.work_shift,
@@ -297,14 +325,24 @@ class MaxFlowMatch():
             )
             # TODO: pull out into a method?
             shift_key = '{}-{}-{}'.format(shift.work_day, shift.work_shift, shift.work_type)
-            # print shift_key
+            shift_list_keys.append(shift_key)
             # TODO: go fix lsi, there are duplicate employee ids coming through
             shift_candidates = lsi.find_in_csv(hist_data_stream, search_schedule, len(shift_list))
-            # print shift_candidates
             self.add_to_graph(shift_key, shift_candidates)
 
         print()
         self.schedule_graph.dump()
+        # self.schedule_graph.depth_first_search(self.schedule_graph.ID_SOURCE, self.schedule_graph.ID_SINK)
+        # self.schedule_graph.depth_first_search(self.schedule_graph.ID_SOURCE, 'B0023')
+        # print()
+        self.schedule_graph.max_flow(self.schedule_graph.ID_SOURCE, self.schedule_graph.ID_SINK)
+        self.schedule_graph.dump()
+
+        for shift in shift_list_keys:
+            flows = self.schedule_graph.nodes[shift].flows
+            for flow in flows:
+                if flows[flow] > 0:
+                    print("shift: %s, employee: %s, hours: %s" % (shift, flow, flows[flow]))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Find the best matches for open shifts given historical data')
