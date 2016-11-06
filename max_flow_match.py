@@ -13,6 +13,29 @@ from work_types import WorkTypes
 from lsi_search import Schedule, LsiSearch
 
 OpenShift = namedtuple('OpenShift', 'work_day work_shift work_type')
+_DEBUG_PRINT = True
+
+
+def _log_print(print_string=None, end=None):
+    if print_string:
+        if end is None:
+            print("%s" % print_string)
+        else:
+            print("%s" % print_string, end="")
+    else:
+        print()
+
+
+def _debug_print(print_string=None, end=None):
+    if not _DEBUG_PRINT:
+        return
+    if print_string:
+        if end is None:
+            print("%s" % print_string)
+        else:
+            print("%s" % print_string, end="")
+    else:
+        print()
 
 
 class Node():
@@ -47,12 +70,12 @@ class Node():
                         otherwise existing edges have their weight updated
         """
         if node_id == self.ID_ANONYMOUS:
-            print("WARNING: Node.connect_to -- not adding edge to anonymous node")
+            _log_print("WARNING: Node.connect_to -- not adding edge to anonymous node")
             return
         if not add_weight:
             if node_id in self.edges:
-                print("INFO: Node.connect_to -- updating weight from %s to %s for edge %s to %s" %
-                      (self.edges[node_id], edge_weight, self.node_id, node_id))
+                _log_print("INFO: Node.connect_to -- updating weight from %s to %s for edge %s to %s" %
+                           (self.edges[node_id], edge_weight, self.node_id, node_id))
             self.edges[node_id] = edge_weight
         else:
             if node_id not in self.edges:
@@ -91,7 +114,7 @@ class Graph():
                         otherwise existing capacity is updated
         """
         if source_node not in self.nodes or sink_node not in self.nodes:
-            print("ERROR: Graph.add_edge -- invalid source (%s) or sink (%s)" % (source_node, sink_node))
+            _log_print("ERROR: Graph.add_edge -- invalid source (%s) or sink (%s)" % (source_node, sink_node))
             return
         s = self.nodes[source_node]
         s.connect_to(sink_node, capacity, add_capacity)
@@ -127,10 +150,10 @@ class Graph():
         :target_node:   stopping point for the BFS
         """
         if source_node not in self.nodes:
-            print("ERROR: Graph.depth_first_search -- invalid source (%s)" % source_node)
+            _log_print("ERROR: Graph.depth_first_search -- invalid source (%s)" % source_node)
             return
         elif target_node not in self.nodes:
-            print("ERROR: Graph.depth_first_search -- invalid target (%s)" % target_node)
+            _log_print("ERROR: Graph.depth_first_search -- invalid target (%s)" % target_node)
             return
 
         # starting max capacity (should be restricted as graph is traveresed)
@@ -187,8 +210,8 @@ class Graph():
             search_path.reverse()
 
             for sp in search_path:
-                print("%s ==> " % sp, end="")
-            print(" (%s)" % capacity)
+                _debug_print("%s ==> " % sp, end="")
+            _debug_print(" (%s)" % capacity)
         else:
             capacity = 0
 
@@ -216,14 +239,14 @@ class Graph():
                 current_node.flows[next_node] += search_path_flow
                 current_node.residuals[next_node] = current_node.edges[next_node] - current_node.flows[next_node]
 
-                print("%s ~~%s-%s=%s~~> %s|" %
-                      (node,
-                       current_node.edges[next_node],
-                       current_node.flows[next_node],
-                       current_node.residuals[next_node],
-                       next_node), end="")
-            print()
-            print()
+                _debug_print("%s ~~%s-%s=%s~~> %s|" %
+                             (node,
+                              current_node.edges[next_node],
+                              current_node.flows[next_node],
+                              current_node.residuals[next_node],
+                              next_node), end="")
+            _debug_print()
+            _debug_print()
         return total_capacity, flow_graph
 
     def max_flow(self, source_node, target_node):
@@ -235,14 +258,14 @@ class Graph():
         """ Print the graph
         """
         for node in self.nodes:
-            print("%s: " % node, end="")
+            _debug_print("%s: " % node, end="")
             edges = self.nodes[node].edges
             flows = self.nodes[node].flows
             residuals = self.nodes[node].residuals
             for edge in edges:
-                print("%s (%s - %s = %s), " % (edge, edges[edge], flows[edge], residuals[edge]), end="")
-            print()
-        print()
+                _debug_print("%s (%s - %s = %s), " % (edge, edges[edge], flows[edge], residuals[edge]), end="")
+            _debug_print()
+        _debug_print()
 
 
 class MaxFlowMatch():
@@ -333,11 +356,11 @@ class MaxFlowMatch():
             shift_candidates = lsi.find_in_csv(hist_data_stream, search_schedule, len(shift_list))
             self.add_to_graph(shift_key, shift_candidates)
 
-        print()
+        _debug_print()
         self.schedule_graph.dump()
         # self.schedule_graph.depth_first_search(self.schedule_graph.ID_SOURCE, self.schedule_graph.ID_SINK)
         # self.schedule_graph.depth_first_search(self.schedule_graph.ID_SOURCE, 'B0023')
-        # print()
+        # _debug_print()
         self.schedule_graph.max_flow(self.schedule_graph.ID_SOURCE, self.schedule_graph.ID_SINK)
         self.schedule_graph.dump()
 
@@ -346,12 +369,12 @@ class MaxFlowMatch():
             found_employee = False
             for flow in flows:
                 if flows[flow] > 0:
-                    print("shift: %s, employee: %s, hours: %s" % (shift, flow, flows[flow]))
+                    _log_print("shift: %s, employee: %s, hours: %s" % (shift, flow, flows[flow]))
                     found_employee = True
                     flows[flow] = 0
                     break
             if not found_employee:
-                print("shift: %s, employee: %s, hours: %s" % (shift, '--?--', flows[flow]))
+                _log_print("shift: %s, employee: %s, hours: %s" % (shift, '--?--', flows[flow]))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Find the best matches for open shifts given historical data')
